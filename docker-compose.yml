@@ -3,6 +3,45 @@ version: '3.5'
 services:
   log4shell-vulnerable-app:
     build: vulnerable-app
+    privileged: true
+    cap_add:
+      - CAP_BPF
+      - CAP_PERFMON
+      - CAP_SYS_ADMIN
+      - CAP_NET_ADMIN
+      - CAP_SYS_RESOURCE
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - /lib/modules/:/lib/modules:ro
+      - /sys/kernel/debug:/sys/kernel/debug:ro
+      - /sys/kernel/btf/vmlinux:/sys/kernel/btf/vmlinux:ro
     container_name: log4shell-vulnerable-app
     ports:
       - 8080:8080
+    networks:
+      - backend
+
+  modsecurity-waf:
+    image: owasp/modsecurity-crs:nginx-alpine
+    container_name: modsecurity-waf
+    depends_on:
+      - log4shell-vulnerable-app
+    ports:
+      - "80:8043"
+    environment:
+      - PORT=8043
+      - SERVER_NAME=localhost
+      - BACKEND=http://log4shell-vulnerable-app:8080
+      - MODSEC_RULE_ENGINE=On
+    volumes:
+      # rules
+      - ./waf/rules/rules.conf:/etc/modsecurity.d/owasp-crs/rules/rules.conf:ro
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
